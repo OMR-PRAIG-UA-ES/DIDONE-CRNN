@@ -1,0 +1,14 @@
+analysis/
+samples/
+
+datasets/didone/*
+!datasets/didone/files
+!datasets/didone/obtain_data.py
+
+datasets/primus/*
+!datasets/primus/README.md
+
+models/
+
+__pycache__/
+.DS_Store

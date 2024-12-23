@@ -38,3 +38,8 @@ ResizeByHeight(128),
 2. ...
 
 Further changes will be appended to this list
+
+---
+
+This code is part of REPERTORIUM project, funded by the European Union’s Horizon Europe programme under grant agreement No 101095065.
+

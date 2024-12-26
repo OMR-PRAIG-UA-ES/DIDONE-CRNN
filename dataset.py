@@ -71,7 +71,7 @@ class MusicSymbolDataset(Dataset):
                     [v2.GaussianBlur(kernel_size=23)], p=0.2 if self.training else 0
                 ),
                 v2.Grayscale(),
-                SauvolaThreshold(25, 0.2),
+                # SauvolaThreshold(25, 0.2),
                 Normalize(),
                 v2.RandomRotation(degrees=3),
             ]
@@ -99,7 +99,7 @@ class MusicSymbolDataset(Dataset):
 class DidoneDataset(MusicSymbolDataset):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        system_path = os.path.join(self.root_path, "system")
+        system_path = os.path.join(self.root_path, "data")
         files = [
             os.path.join(system_path, file.split(".")[0])
             for file in os.listdir(system_path)

@@ -71,8 +71,8 @@ else:
 train_split, val_split = torch.utils.data.random_split(dataset, [0.8, 0.2])
 
 # limit samples to test the script
-# train_split = torch.utils.data.Subset(train_split, range(10))
-# val_split = torch.utils.data.Subset(val_split, range(5))
+# train_split = torch.utils.data.Subset(train_split, range(100))
+# val_split = torch.utils.data.Subset(val_split, range(100))
 
 
 def train_collate_fn(batch):
@@ -85,7 +85,7 @@ def train_collate_fn(batch):
 
 train_loader = torch.utils.data.DataLoader(
     train_split,
-    batch_size=24,
+    batch_size=8,
     collate_fn=train_collate_fn,
     shuffle=True,
 )
@@ -97,17 +97,18 @@ val_loader = torch.utils.data.DataLoader(
     shuffle=False,
 )
 
-model = CRNN(num_channels=1, img_height=128, output_size=len(dataset.vocab.c2i)).to(
+model = CRNN(num_channels=1, img_height=args.img_height, output_size=len(dataset.vocab.c2i)).to(
     device
 )
 summary(model)
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-ctc_loss = torch.nn.CTCLoss(blank=dataset.vocab.c2i["<BLANK>"]).to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.9)
+ctc_loss = torch.nn.CTCLoss(blank=dataset.vocab.c2i["<BLANK>"], zero_infinity=True).to(device)
 
 patience = 25
 best_loss = float("inf")
 counter = 0
-skip_val = 50
+skip_val = 0
 
 epoch = 0
 while True:
@@ -130,10 +131,13 @@ while True:
         y_hat = y_hat.log_softmax(dim=-1)
         y_hat = y_hat.permute(1, 0, 2).contiguous()
         loss = ctc_loss(y_hat, y, in_len, tgt_len)
+        tqdm.write(f"Loss: {loss.item()}")
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)  # Gradient clipping
         optimizer.step()
+    scheduler.step()
 
-    print(f"Epoch {epoch} - Batch {i} - Loss {loss.item()}")
+    print(f"Epoch {epoch} - Loss {loss.item()}")
 
     if epoch >= skip_val:
         preds = []

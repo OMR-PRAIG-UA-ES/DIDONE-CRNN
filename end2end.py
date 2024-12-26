@@ -116,10 +116,10 @@ class RNN(torch.nn.Module):
             256,
             num_layers=2,
             batch_first=True,
-            dropout=0.2,
+            dropout=0.5,
             bidirectional=True,
         )
-        self.__dropout = torch.nn.Dropout(0.2)
+        self.__dropout = torch.nn.Dropout(0.5)
         self.linear = torch.nn.Linear(256 * 2, output_size)
 
     @property

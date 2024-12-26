@@ -16,72 +16,55 @@ parser.add_argument(
     help="Limit the samples to load",
 )
 parser.add_argument("--img_height", "-ih", type=int, default=128, help="Image height")
+parser.add_argument("--only-dicts", action="store_true", help="Only generate dictionaries")
 args = parser.parse_args()
 
-os.makedirs("./page", exist_ok=True)
-os.makedirs("./system", exist_ok=True)
+os.makedirs("./data", exist_ok=True)
 os.makedirs("./dicts", exist_ok=True)
-
 
 def load_img_from_url(url):
     response = requests.get(url)
     image = Image.open(BytesIO(response.content))
     img_array = np.array(image)
-    return img_array, image.width, image.height
+    return img_array
 
+split_symbols = {
+    '<BLANK>': 0,
+    '<PAD>': 1,
+}
+agnostic_symbols = {
+    '<BLANK>': 0,
+    '<PAD>': 1,
+}
 
-def pascal2coco(voc):
-    x_min, y_min, x_max, y_max = voc
-    return [x_min, y_min, x_max - x_min, y_max - y_min]
-
-
-def pascal2yolo(voc, img_width, img_height):
-    x_min, y_min, x_max, y_max = voc
-    x_center = (x_min + x_max) / 2.0 / img_width
-    y_center = (y_min + y_max) / 2.0 / img_height
-    width = (x_max - x_min) / img_width
-    height = (y_max - y_min) / img_height
-    return [x_center, y_center, width, height]
-
-
-split_symbols = {}
-agnostic_symbols = {}
+if args.only_dicts:
+    print("Only generating dictionaries")
 
 files = os.listdir("./files")
 if args.limit:
     files = files[:args.limit]
 
-for file in tqdm():
+images_in_already_in_data = set()
+for file in os.listdir("./data"):
+    if file.endswith(".jpg"):
+        images_in_already_in_data.add("_".join(file.split("_")[:-1]))
+
+for file in tqdm(files):
     path = os.path.join("./files", file)
     with open(path, "r") as f:
         data = json.load(f)
 
     for document in data["documents"]:
         identifier = document["name"].strip().replace(" ", "_")
+        if not args.only_dicts and identifier in images_in_already_in_data:
+            print(f"Skipping {identifier}")
+            continue
+
         for section in document["sections"]:
             for image in section["images"]:
-                img_array, img_width, img_height = load_img_from_url(image["url"])
-                cv2.imwrite(f"./page/{identifier}.jpg", img_array)
-
-                page_data = []
                 e2e_data = []
-
+                img_array = None
                 for page in image["pages"]:
-                    page_bbox = [
-                        page["bounding_box"].get(k)
-                        for k in ("fromX", "fromY", "toX", "toY")
-                    ]
-                    page_coco = pascal2coco(page_bbox)
-                    page_yolo = pascal2yolo(page_bbox, img_width, img_height)
-                    page_data.append(
-                        {
-                            "voc": page_bbox,
-                            "coco": page_coco,
-                            "yolo": page_yolo,
-                            "cls": "page",
-                        }
-                    )
-
                     for region in page["regions"]:
                         if "bounding_box" not in region:
                             continue
@@ -90,28 +73,23 @@ for file in tqdm():
                             region["bounding_box"].get(k)
                             for k in ("fromX", "fromY", "toX", "toY")
                         ]
-                        region_coco = pascal2coco(region_bbox)
-                        region_yolo = pascal2yolo(region_bbox, img_width, img_height)
-                        page_data.append(
-                            {
-                                "voc": region_bbox,
-                                "coco": region_coco,
-                                "yolo": region_yolo,
-                                "cls": region["type"],
-                            }
-                        )
 
                         if region["type"] == "staff" and "symbols" in region:
-                            region_crop = img_array[
-                                region_bbox[1] : region_bbox[3],
-                                region_bbox[0] : region_bbox[2],
-                            ]
-
                             name = f"{identifier}_{region['id']}"
-                            cv2.imwrite(
-                                f"./system/{name}.jpg",
-                                region_crop,
-                            )
+                            
+                            if not args.only_dicts:
+                                if img_array is None:
+                                    img_array = load_img_from_url(image["url"])
+
+                                region_crop = img_array[
+                                    region_bbox[1] : region_bbox[3],
+                                    region_bbox[0] : region_bbox[2],
+                                ]
+
+                                cv2.imwrite(
+                                    f"./data/{name}.jpg",
+                                    region_crop,
+                                )
 
                             agnostic_sqnc = []
                             split_sqnc = []
@@ -144,21 +122,14 @@ for file in tqdm():
                                     agnostic_symbols[agnostic]
                                 )
 
-                            with open(f"./system/{name}.std.txt", "w") as f:
+                            with open(f"./data/{name}.std.txt", "w") as f:
                                 f.write(" ".join(map(str, agnostic_sqnc)))
 
-                            with open(f"./system/{name}.split.txt", "w") as f:
+                            with open(f"./data/{name}.split.txt", "w") as f:
                                 f.write(" ".join(map(str, split_sqnc)))
 
-                with open(f"./page/{identifier}.json", "w") as f:
-                    json.dump(page_data, f)
-
 with open(f"./dicts/split.json", "w") as f:
-    split_symbols["<BLANK>"] = len(split_symbols)
-    split_symbols["<PAD>"] = len(split_symbols)
     json.dump(split_symbols, f)
 
 with open(f"./dicts/std.json", "w") as f:
-    agnostic_symbols["<BLANK>"] = len(agnostic_symbols)
-    agnostic_symbols["<PAD>"] = len(agnostic_symbols)
     json.dump(agnostic_symbols, f)
